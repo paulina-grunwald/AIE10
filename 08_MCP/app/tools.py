@@ -1,4 +1,6 @@
+import json
 import secrets
+import time
 
 from mcp.server.auth.middleware.auth_context import get_access_token
 
@@ -102,6 +104,45 @@ async def view_cart() -> dict:
     total = round(sum(i["subtotal"] for i in items), 2)
     return {"items": items, "total": total, "item_count": len(items)}
 
+@mcp.tool()
+async def update_cart_quantity(product_id: int, quantity: int) -> dict:
+    """Update specific product quanity in your shopping card"""
+    username = await _get_username()
+    db = await oauth_provider._get_db()
+    cursor = await db.execute(
+        "UPDATE cart_items SET quantity = ? WHERE username = ? AND product_id = ?",
+        (quantity, username, product_id),
+    )
+    await db.commit()
+
+    if cursor.rowcount == 0:
+        return {"error": "Item not in cart"}
+    return {"success": True, "message": f"Updated quantity to {quantity}"}
+
+@mcp.tool()
+async def get_order_history(number_of_orders: int = 10) -> dict:
+    """View your past orders, most recent first. Optionally limit how many to return."""
+    username = await _get_username()
+    db = await oauth_provider._get_db()
+    cursor = await db.execute(
+        """SELECT order_id, total, items_json, created_at
+           FROM orders
+           WHERE username = ?
+           ORDER BY created_at DESC
+           LIMIT ?""",
+        (username, number_of_orders),
+    )
+    rows = await cursor.fetchall()
+    orders = [
+        {
+            "order_id": r[0],
+            "total": r[1],
+            "items": json.loads(r[2]),
+            "created_at": r[3],
+        }
+        for r in rows
+    ]
+    return {"orders": orders, "order_count": len(orders)}
 
 @mcp.tool()
 async def remove_from_cart(product_id: int) -> dict:
@@ -128,10 +169,15 @@ async def checkout() -> dict:
     if not cart["items"]:
         return {"error": "Your cart is empty"}
 
+    order_id = secrets.token_hex(8).upper()
+    await db.execute(
+        """INSERT INTO orders (order_id, username, total, items_json, created_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (order_id, username, cart["total"], json.dumps(cart["items"]), time.time()),
+    )
     await db.execute("DELETE FROM cart_items WHERE username = ?", (username,))
     await db.commit()
 
-    order_id = secrets.token_hex(8).upper()
     return {
         "order_id": order_id,
         "status": "confirmed",
