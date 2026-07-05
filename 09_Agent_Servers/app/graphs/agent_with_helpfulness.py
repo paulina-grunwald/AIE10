@@ -55,7 +55,13 @@ class HelpfulnessState(MessagesState):
     feedback: str
 
 def agent_node(state: HelpfulnessState) -> dict:
-    """Run the tool-calling agent. On a retry, nudge it with the judge's reason."""
+    """Run the tool-calling agent. On a retry, nudge it with the judge's reason.
+
+    Note: each attempt is appended to the visible `messages`, so the frontend
+    shows every retry. That is intentional here: it makes the helpfulness loop
+    observable in the demo. In production you would keep intermediate attempts
+    off the client and stream only the final accepted answer.
+    """
     messages = list(state["messages"])
     is_new_turn = bool(messages) and messages[-1].type == "human"
     loops = 0 if is_new_turn else state.get("helpfulness_loops", 0)
