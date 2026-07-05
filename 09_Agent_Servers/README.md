@@ -444,6 +444,17 @@ The API key is a secret that should be kept secure. In a Next.js app, any env va
 
 Build an `agent_with_helpfulness` graph that adds a post-response helpfulness check: after the agent answers, a judge model decides whether the response is helpful, and if not, the graph loops back for another attempt (with a safe loop limit). Register it in `langgraph.json`, deploy it, then compare LangSmith traces for queries that pass vs. fail the helpfulness check. Does the retry loop behave differently in Studio vs. production?
 
+#### Answer
+
+No, the retry loop logic behaves the same in both. It is the same compiled graph in each place: same nodes, same conditional routing, and the same MAX_HELPFULNESS_LOOPS. A question that passes on the first attempt in Studio (for example "What are common signs of feline dehydration?", is_helpful: true, helpfulness_loops: 1) passes the same way in production, and a question the judge rejects.
+
+What differs is the execution context and how you observe the loop, not the loop itself:
+
+- Studio (langgraph dev) runs an in-memory development server. You watch each super-step live can inspect and edit the state between steps, and replay runs. State is not durably persisted, and it is a single local process. Studio's state editing  could be quite useful when debugging:
+![alt text](image.png)
+
+- Production (in my case i went for self-hosted langgraph-api container on Railway to save on 40$ subscription) runs the same graph on hosted infrastructure with persistent checkpointing. The same loop shows up as nested runs in the LangSmith Trace tab, latency and token cost compound with every retry, and runs execute concurrently rather than one at a time.
+
 ## Advanced Activity: Auth and Custom Routes
 
 Research [LangSmith Deployments custom routes](https://github.com/langchain-samples/lsd-custom-route-react-ui) and describe how you could add authentication so each user only sees their own threads. Optionally implement a simple auth gate on your Vercel frontend.
