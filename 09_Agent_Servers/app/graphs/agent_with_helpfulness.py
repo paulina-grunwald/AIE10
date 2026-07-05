@@ -46,7 +46,11 @@ _agent = create_agent(
     system_prompt=SYSTEM_PROMPT,
 )
 
-_judge = get_chat_model().with_structured_output(Verdict)
+_judge = (
+    get_chat_model()
+    .with_config(tags=["nostream"])
+    .with_structured_output(Verdict)
+)
 
 class HelpfulnessState(MessagesState):
     """Conversation messages plus retry-loop bookkeeping."""
