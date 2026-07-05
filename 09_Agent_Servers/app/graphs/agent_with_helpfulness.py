@@ -16,7 +16,10 @@ SYSTEM_PROMPT = (
 
 HELPFULNESS_SYSTEM_PROMPT = (
     "You are a strict grader deciding whether an assistant's answer is helpful "
-    "and reasonably complete for the user's question."
+    "and reasonably complete. If the answer refuses, hedges, defers to a "
+    "professional, or omits the specific figure/fact the user asked for, it is "
+    "NOT helpful. Only mark it helpful when it directly and concretely answers "
+    "the exact question asked."
 )
 
 HELPFULNESS_PROMPT = (
