@@ -4,7 +4,7 @@ ADD . /deps/09_Agent_Servers
 
 RUN for dep in /deps/*; do             echo "Installing $dep";             if [ -d "$dep" ]; then                 echo "Installing $dep";                 (cd "$dep" && PYTHONDONTWRITEBYTECODE=1 uv pip install --system --no-cache-dir -c /api/constraints.txt -e .);             fi;         done
 
-ENV LANGSERVE_GRAPHS='{"simple_agent": "app.graphs.simple_agent:graph"}'
+ENV LANGSERVE_GRAPHS='{"simple_agent": "app.graphs.simple_agent:graph", "agent_with_helpfulness": "app.graphs.agent_with_helpfulness:graph"}'
 
 RUN mkdir -p /api/langgraph_api /api/langgraph_runtime /api/langgraph_license && touch /api/langgraph_api/__init__.py /api/langgraph_runtime/__init__.py /api/langgraph_license/__init__.py
 RUN PYTHONDONTWRITEBYTECODE=1 uv pip install --system --no-cache-dir --no-deps -e /api
