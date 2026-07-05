@@ -19,7 +19,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { getMessageText, toolLabel } from "@/lib/messages";
+import {
+  getMessageText,
+  getToolQuery,
+  hostname,
+  parseSearchResults,
+  splitPassages,
+  toolLabel,
+} from "@/lib/messages";
+import { Markdown } from "@/components/markdown";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
@@ -43,6 +51,21 @@ export function Chat({ assistantId }: { assistantId: string }) {
 
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
+
+  // Map each tool result back to the query the agent searched for.
+  // Tool result messages carry a tool_call_id; the matching AI message holds
+  // the tool_calls with the arguments.
+  const queryByToolCallId = new Map<string, string>();
+  for (const m of messages) {
+    if (m.type !== "ai") continue;
+    const calls =
+      (m as unknown as { tool_calls?: Array<{ id?: string; args?: unknown }> })
+        .tool_calls ?? [];
+    for (const call of calls) {
+      const query = getToolQuery(call.args);
+      if (call.id && query) queryByToolCallId.set(call.id, query);
+    }
+  }
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -91,7 +114,18 @@ export function Chat({ assistantId }: { assistantId: string }) {
           )}
 
           {messages.map((message, i) => (
-            <MessageRow key={message.id ?? i} message={message} />
+            <MessageRow
+              key={message.id ?? i}
+              message={message}
+              query={
+                message.type === "tool"
+                  ? queryByToolCallId.get(
+                      (message as unknown as { tool_call_id?: string })
+                        .tool_call_id ?? ""
+                    )
+                  : undefined
+              }
+            />
           ))}
 
           {isLoading && <ThinkingRow />}
@@ -139,7 +173,13 @@ export function Chat({ assistantId }: { assistantId: string }) {
   );
 }
 
-function MessageRow({ message }: { message: StreamMessage }) {
+function MessageRow({
+  message,
+  query,
+}: {
+  message: StreamMessage;
+  query?: string;
+}) {
   const isHuman = message.type === "human";
   const isTool = message.type === "tool";
   const text = getMessageText(message.content);
@@ -151,22 +191,7 @@ function MessageRow({ message }: { message: StreamMessage }) {
       : [];
 
   if (isTool) {
-    return (
-      <div className="mx-auto w-full max-w-3xl">
-        <details className="group rounded-lg border bg-muted/40 text-sm">
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-muted-foreground">
-            {toolIcon(message.name)}
-            <span className="font-medium text-foreground">
-              {toolLabel(message.name)}
-            </span>
-            <span className="text-xs">tool result</span>
-          </summary>
-          <pre className="max-h-64 overflow-auto whitespace-pre-wrap px-3 pb-3 text-xs text-muted-foreground">
-            {text}
-          </pre>
-        </details>
-      </div>
-    );
+    return <ToolResult name={message.name} text={text} query={query} />;
   }
 
   return (
@@ -201,16 +226,99 @@ function MessageRow({ message }: { message: StreamMessage }) {
         {text && (
           <div
             className={cn(
-              "rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap",
+              "rounded-2xl px-4 py-2.5 text-sm",
               isHuman
-                ? "bg-primary text-primary-foreground"
+                ? "whitespace-pre-wrap bg-primary text-primary-foreground"
                 : "bg-muted text-foreground"
             )}
           >
-            {text}
+            {isHuman ? text : <Markdown>{text}</Markdown>}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function ToolResult({
+  name,
+  text,
+  query,
+}: {
+  name?: string;
+  text: string;
+  query?: string;
+}) {
+  const searchResults = parseSearchResults(text);
+  const passages =
+    !searchResults && name === "retrieve_information"
+      ? splitPassages(text)
+      : null;
+
+  const count = searchResults?.length ?? passages?.length ?? null;
+
+  return (
+    <div className="mx-auto w-full max-w-3xl">
+      <details className="group rounded-lg border bg-muted/40 text-sm">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-muted-foreground">
+          {toolIcon(name)}
+          <span className="font-medium text-foreground">{toolLabel(name)}</span>
+          {query && (
+            <span className="truncate text-xs text-muted-foreground">
+              &ldquo;{query}&rdquo;
+            </span>
+          )}
+          {count != null && (
+            <Badge variant="secondary" className="ml-auto shrink-0">
+              {count} {searchResults ? "sources" : "passages"}
+            </Badge>
+          )}
+        </summary>
+
+        <div className="space-y-2 px-3 pb-3">
+          {searchResults ? (
+            searchResults.map((r, i) => (
+              <a
+                key={r.url || i}
+                href={r.url}
+                target="_blank"
+                rel="noreferrer"
+                className="block rounded-md border bg-background/60 p-2.5 transition-colors hover:bg-background"
+              >
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Search className="size-3 shrink-0" />
+                  <span className="truncate">{hostname(r.url)}</span>
+                </div>
+                <div className="mt-0.5 font-medium text-foreground">
+                  {r.title}
+                </div>
+                {r.content && (
+                  <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
+                    {r.content}
+                  </p>
+                )}
+              </a>
+            ))
+          ) : passages ? (
+            passages.map((p, i) => (
+              <div
+                key={i}
+                className="rounded-md border bg-background/60 p-2.5 text-xs"
+              >
+                <div className="mb-1 flex items-center gap-1.5 text-muted-foreground">
+                  <FileText className="size-3 shrink-0" />
+                  Passage {i + 1}
+                </div>
+                <p className="whitespace-pre-wrap text-muted-foreground">{p}</p>
+              </div>
+            ))
+          ) : (
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
+              {text}
+            </pre>
+          )}
+        </div>
+      </details>
     </div>
   );
 }
