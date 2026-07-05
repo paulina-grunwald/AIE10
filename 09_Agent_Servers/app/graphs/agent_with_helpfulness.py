@@ -90,10 +90,6 @@ def helpfulness_node(state: HelpfulnessState) -> dict:
     if messages:
         answer = str(messages[-1].content)
 
-    # Tag the run "nostream" so the judge's structured-output tokens are not
-    # surfaced in the LangGraph messages stream (the frontend would otherwise
-    # render the raw {"is_helpful": ...} verdict as a chat bubble). The tag
-    # propagates from this run to the child chat-model run.
     verdict = _judge.invoke(
         [
             SystemMessage(HELPFULNESS_SYSTEM_PROMPT),

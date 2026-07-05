@@ -1,0 +1,232 @@
+{
+  "info": {
+    "name": "Agent Server - Helpfulness Loop",
+    "description": "Test the agent_with_helpfulness LangGraph Agent Server, locally (langgraph dev) or on Railway. Set the `baseUrl` collection variable to switch environments. Self-hosted containers are open, so `apiKey` is only needed for a LangSmith managed deployment (it is sent as X-Api-Key and is harmless when empty).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:2024",
+      "type": "string",
+      "description": "Local: http://localhost:2024  |  Railway: https://YOUR-APP.up.railway.app"
+    },
+    {
+      "key": "assistantId",
+      "value": "agent_with_helpfulness",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "",
+      "type": "string",
+      "description": "Only for a LangSmith managed deployment. Leave empty for local / Railway self-host."
+    },
+    {
+      "key": "threadId",
+      "value": "",
+      "type": "string",
+      "description": "Auto-filled by 'Create Thread'."
+    },
+    {
+      "key": "passQuery",
+      "value": "What are common signs of feline dehydration?",
+      "type": "string"
+    },
+    {
+      "key": "failQuery",
+      "value": "What is the exact mg/kg dose of paracetamol for a cat?",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Health check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/ok", "host": ["{{baseUrl}}"], "path": ["ok"] },
+        "description": "Confirm the server is up."
+      }
+    },
+    {
+      "name": "1. List assistants",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Api-Key", "value": "{{apiKey}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{}" },
+        "url": {
+          "raw": "{{baseUrl}}/assistants/search",
+          "host": ["{{baseUrl}}"],
+          "path": ["assistants", "search"]
+        },
+        "description": "Verify agent_with_helpfulness is registered and deployed."
+      }
+    },
+    {
+      "name": "2. Run (stateless, PASS query)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const b = pm.response.json();",
+              "console.log('is_helpful      :', b.is_helpful);",
+              "console.log('helpfulness_loops:', b.helpfulness_loops);",
+              "console.log('feedback        :', b.feedback || '(none)');",
+              "pm.test('Passed on first attempt', () => pm.expect(b.is_helpful).to.be.true);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Api-Key", "value": "{{apiKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"assistant_id\": \"{{assistantId}}\",\n  \"input\": {\n    \"messages\": [\n      { \"role\": \"human\", \"content\": \"{{passQuery}}\" }\n    ]\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/runs/wait",
+          "host": ["{{baseUrl}}"],
+          "path": ["runs", "wait"]
+        },
+        "description": "Stateless run that should satisfy the judge on the first pass (helpfulness_loops = 1, is_helpful = true)."
+      }
+    },
+    {
+      "name": "3. Run (stateless, FAIL query -> loop)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const b = pm.response.json();",
+              "console.log('is_helpful      :', b.is_helpful);",
+              "console.log('helpfulness_loops:', b.helpfulness_loops);",
+              "console.log('feedback        :', b.feedback || '(none)');",
+              "pm.test('Retry loop fired (>1 attempt)', () => pm.expect(b.helpfulness_loops).to.be.above(1));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Api-Key", "value": "{{apiKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"assistant_id\": \"{{assistantId}}\",\n  \"input\": {\n    \"messages\": [\n      { \"role\": \"human\", \"content\": \"{{failQuery}}\" }\n    ]\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/runs/wait",
+          "host": ["{{baseUrl}}"],
+          "path": ["runs", "wait"]
+        },
+        "description": "Query the judge tends to reject, so the graph loops back to the agent (helpfulness_loops > 1), capped by MAX_HELPFULNESS_LOOPS."
+      }
+    },
+    {
+      "name": "4. Create thread",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const id = pm.response.json().thread_id;",
+              "pm.collectionVariables.set('threadId', id);",
+              "console.log('threadId set to', id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Api-Key", "value": "{{apiKey}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{}" },
+        "url": { "raw": "{{baseUrl}}/threads", "host": ["{{baseUrl}}"], "path": ["threads"] },
+        "description": "Create a persistent thread; thread_id is saved to the collection variable for the next requests."
+      }
+    },
+    {
+      "name": "5. Run on thread (wait)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const b = pm.response.json();",
+              "console.log('is_helpful      :', b.is_helpful);",
+              "console.log('helpfulness_loops:', b.helpfulness_loops);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Api-Key", "value": "{{apiKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"assistant_id\": \"{{assistantId}}\",\n  \"input\": {\n    \"messages\": [\n      { \"role\": \"human\", \"content\": \"{{failQuery}}\" }\n    ]\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/threads/{{threadId}}/runs/wait",
+          "host": ["{{baseUrl}}"],
+          "path": ["threads", "{{threadId}}", "runs", "wait"]
+        },
+        "description": "Run against the persisted thread from step 4 (state is checkpointed, so history carries over)."
+      }
+    },
+    {
+      "name": "6. Get thread state",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-Api-Key", "value": "{{apiKey}}" }],
+        "url": {
+          "raw": "{{baseUrl}}/threads/{{threadId}}/state",
+          "host": ["{{baseUrl}}"],
+          "path": ["threads", "{{threadId}}", "state"]
+        },
+        "description": "Inspect the checkpointed state: messages plus helpfulness_loops / is_helpful / feedback."
+      }
+    },
+    {
+      "name": "7. Stream run (SSE)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Api-Key", "value": "{{apiKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"assistant_id\": \"{{assistantId}}\",\n  \"input\": {\n    \"messages\": [\n      { \"role\": \"human\", \"content\": \"{{passQuery}}\" }\n    ]\n  },\n  \"stream_mode\": [\"messages\", \"updates\"]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/threads/{{threadId}}/runs/stream",
+          "host": ["{{baseUrl}}"],
+          "path": ["threads", "{{threadId}}", "runs", "stream"]
+        },
+        "description": "Server-sent-events stream, the same mechanism the Next.js frontend uses to render tokens as they arrive."
+      }
+    }
+  ]
+}
