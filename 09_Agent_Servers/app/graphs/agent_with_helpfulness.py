@@ -46,11 +46,7 @@ _agent = create_agent(
     system_prompt=SYSTEM_PROMPT,
 )
 
-_judge = (
-    get_chat_model()
-    .with_config(tags=["nostream"])
-    .with_structured_output(Verdict)
-)
+_judge = get_chat_model().with_structured_output(Verdict)
 
 class HelpfulnessState(MessagesState):
     """Conversation messages plus retry-loop bookkeeping."""
@@ -88,10 +84,17 @@ def helpfulness_node(state: HelpfulnessState) -> dict:
     if messages:
         answer = str(messages[-1].content)
 
-    verdict = _judge.invoke([
-        SystemMessage(HELPFULNESS_SYSTEM_PROMPT),
-        HumanMessage(HELPFULNESS_PROMPT.format(question=question, answer=answer)),
-    ])
+    # Tag the run "nostream" so the judge's structured-output tokens are not
+    # surfaced in the LangGraph messages stream (the frontend would otherwise
+    # render the raw {"is_helpful": ...} verdict as a chat bubble). The tag
+    # propagates from this run to the child chat-model run.
+    verdict = _judge.invoke(
+        [
+            SystemMessage(HELPFULNESS_SYSTEM_PROMPT),
+            HumanMessage(HELPFULNESS_PROMPT.format(question=question, answer=answer)),
+        ],
+        config={"tags": ["nostream"]},
+    )
     return {"is_helpful": verdict.is_helpful, "feedback": verdict.reason}
 
 def finalize_node(state: HelpfulnessState) -> dict:
