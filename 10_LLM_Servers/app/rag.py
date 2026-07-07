@@ -20,10 +20,10 @@ from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
-from langchain_openai import ChatOpenAI
-from langchain_openai.embeddings import OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from langgraph.graph import START, StateGraph
+
+from app.models import get_chat_model, get_embeddings
 
 
 def _tiktoken_len(text: str) -> int:
@@ -67,14 +67,8 @@ def _build_rag_graph(data_dir: str):
     )
     chunks = text_splitter.split_documents(documents) if documents else []
 
-    # Embeddings and vector store (in-memory Qdrant)
-    embedding_model = OpenAIEmbeddings(
-        model=os.environ.get("FIREWORKS_EMBEDDING_MODEL", "accounts/fireworks/models/qwen3-embedding-8b"),
-        openai_api_key=os.environ["FIREWORKS_API_KEY"],
-        openai_api_base="https://api.fireworks.ai/inference/v1",
-        check_embedding_ctx_length=False,
-        dimensions=4096,
-    )
+    # Backend chosen by LLM_BACKEND.
+    embedding_model = get_embeddings()
     qdrant_vectorstore = QdrantVectorStore.from_documents(
         documents=chunks,
         embedding=embedding_model,
@@ -90,11 +84,7 @@ def _build_rag_graph(data_dir: str):
         "Only use the provided context to answer the query. If you do not know the answer, or it's not contained in the provided context respond with \"I don't know\""
     )
     chat_prompt = ChatPromptTemplate.from_messages([("human", human_template)])
-    generator_llm = ChatOpenAI(
-        model=os.environ.get("FIREWORKS_CHAT_MODEL", "accounts/fireworks/models/gpt-oss-20b"),
-        openai_api_key=os.environ["FIREWORKS_API_KEY"],
-        openai_api_base="https://api.fireworks.ai/inference/v1",
-    )
+    generator_llm = get_chat_model(temperature=None)
 
     def retrieve(state: _RAGState) -> _RAGState:
         retrieved_docs = retriever.invoke(state["question"]) if retriever else []
