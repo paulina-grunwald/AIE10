@@ -121,6 +121,7 @@ Additionally, instrument both pipelines with **LangSmith** to capture token usag
   │ Cost per question │ $0.000335               │ $0.001761             │
   └───────────────────┴─────────────────────────┴───────────────────────┘
 
+![alt text](image.png)
 
 Both providers land in about the same place on quality, they just trade wins. OpenAI grounds its answers a bit better (faithfulness 0.72 vs 0.60) and pulled back all the relevant context (recall 1.0 vs 0.8), while Fireworks had the cleaner retrieval with no junk in the context (precision 1.0 vs 0.8), and answer relevancy is basically a tie (0.72 vs 0.73). So the open source Fireworks model is holding its own against gpt-4.1-mini here. The real difference shows up in cost. Fireworks came out to $0.000335 per question versus $0.001761 for OpenAI, so about 5x cheaper for roughly the same answers. That gap barely matters for a handful of dev queries but it adds up fast at scale, roughly $335 vs $1,761 per million queries. Faithfulness sitting on the lower side for both (0.60 and 0.72) tells me there's room to improve on my chunking and prompt, not just the model choice. A couple of things to keep in mind, this is only 5 questions so the individual scores wobble a bit run to run and the cost ratio is the stable takeaway, and the costs only count chat tokens on serverless pricing so embeddings aren't included.
 
