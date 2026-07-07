@@ -48,27 +48,33 @@ backends by only changing `LLM_BACKEND`.
 
 ## 4. Compare (Results)
 
-Run the same question on each backend and note the difference using `uv run python advanced_build/compare_backends.py`:
+Run the same question on each backend and note the difference. Run the app once
+per backend and compare the two runs (and their LangSmith traces):
+
+```bash
+uv run python main.py                     # Fireworks (hosted)
+LLM_BACKEND=ollama uv run python main.py  # local Ollama
+```
+
 
 ![alt text](image.png)
 
 - Quality: is the local answer as grounded and complete as the Fireworks one?
 - Latency: time the full response on each.
 
-|                  | Fireworks (hosted)   | Local (Ollama)             |
-| ---------------- | -------------------- | -------------------------- |
-| Chat model       | gpt-oss-20b          | qwen2.5:3b                 |
-| Embeddings       | qwen3-embedding      | nomic-embed-text           |
-| Index / embed    | 3.6s                 | 1.6s                       |
-| Query / generate | 9.5s                 | 7.1s                       |
-| Total            | 13.1s                | 8.6s                       |
-| Answer quality   | richer, fuller table | grounded, slightly briefer |
+Fireworks output data:
+![alt text](image-1.png)
 
-Numbers are from one warm run (local model already loaded on the GPU). The first
-local call is slower because of cold-start model loading, so warm it up before
-timing. Once warm, local embeddings are faster (no network hop) and local
-generation is competitive; the hosted model still tends to give richer answers
-and scales better under load.
+Total latency: 33.5s
+Total tokens: 7,969 (6,475 input + 1,494 output)
+Total cost:  $0.0009
+
+Local Ollama output data:
+![alt text](image-2.png)
+but on 2nd run because it was warm already it was faster:
+![alt text](image-3.png)
+Total latency: 15.5s cold start | 10 sec warm
+Cost: 0$
 
 ### Insights (local vs managed in production)
 
