@@ -1,4 +1,8 @@
+import time
+
+from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+load_dotenv(override=True)
 
 from app.graphs.simple_agent import graph
 
@@ -20,6 +24,7 @@ def display_messages(messages):
 
 
 def main():
+    start = time.perf_counter()
     result = graph.invoke(
         {
             "messages": [
@@ -29,7 +34,9 @@ def main():
             ]
         }
     )
+    elapsed = time.perf_counter() - start
     display_messages(result["messages"])
+    print(f"\n[latency: {round(elapsed, 1)}s]")
 
 
 if __name__ == "__main__":
