@@ -107,6 +107,23 @@ Use RAGAS to evaluate your open-source Fireworks AI powered RAG app against an O
 
 Additionally, instrument both pipelines with **LangSmith** to capture token usage and cost per query. Use LangSmith's tracing and cost dashboards to compare the total cost of running each provider at scale. Include your evaluation results, cost breakdown, and analysis in your Loom video.
 
+  ┌───────────────────┬─────────────────────────┬───────────────────────┐
+  │      Metric       │ Fireworks (gpt-oss-20b) │ OpenAI (gpt-4.1-mini) │
+  ├───────────────────┼─────────────────────────┼───────────────────────┤
+  │ Faithfulness      │ 0.601                   │ 0.720                 │
+  ├───────────────────┼─────────────────────────┼───────────────────────┤
+  │ Answer relevancy  │ 0.716                   │ 0.734                 │
+  ├───────────────────┼─────────────────────────┼───────────────────────┤
+  │ Context precision │ 1.000                   │ 0.800                 │
+  ├───────────────────┼─────────────────────────┼───────────────────────┤
+  │ Context recall    │ 0.800                   │ 1.000                 │
+  ├───────────────────┼─────────────────────────┼───────────────────────┤
+  │ Cost per question │ $0.000335               │ $0.001761             │
+  └───────────────────┴─────────────────────────┴───────────────────────┘
+
+
+Both providers land in about the same place on quality, they just trade wins. OpenAI grounds its answers a bit better (faithfulness 0.72 vs 0.60) and pulled back all the relevant context (recall 1.0 vs 0.8), while Fireworks had the cleaner retrieval with no junk in the context (precision 1.0 vs 0.8), and answer relevancy is basically a tie (0.72 vs 0.73). So the open source Fireworks model is holding its own against gpt-4.1-mini here. The real difference shows up in cost. Fireworks came out to $0.000335 per question versus $0.001761 for OpenAI, so about 5x cheaper for roughly the same answers. That gap barely matters for a handful of dev queries but it adds up fast at scale, roughly $335 vs $1,761 per million queries. Faithfulness sitting on the lower side for both (0.60 and 0.72) tells me there's room to improve on my chunking and prompt, not just the model choice. A couple of things to keep in mind, this is only 5 questions so the individual scores wobble a bit run to run and the cost ratio is the stable takeaway, and the costs only count chat tokens on serverless pricing so embeddings aren't included.
+
 ## Advanced Activity: Local Models
 
 Swap out the Fireworks AI endpoints for **locally-running open-source models** using [Ollama](https://ollama.com/) or another local inference server of your choice. Run both your embedding model and your chat model locally, and rebuild the RAG pipeline on top of them.
