@@ -7,12 +7,15 @@ the agent is configured and constrained lives here.
 import asyncio
 import logging
 import os
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 from claude_agent_sdk import (
+    AssistantMessage,
     ClaudeAgentOptions,
     ResultMessage,
     SystemMessage,
+    ToolUseBlock,
     create_sdk_mcp_server,
     query,
     tool,
@@ -30,18 +33,10 @@ file paths (and line numbers where useful) you relied on. If the repository does
 answer the question, say so plainly instead of guessing.
 """
 
-# Read-only. This agent runs headless, so there is no human at a permission prompt —
-# the toolset IS the safety boundary. Bash/Write/Edit must never appear here.
-#
-# Two options, two jobs — `allowed_tools` alone is NOT a sandbox:
-#   tools=         which tools exist at all. This is the restriction.
-#   allowed_tools= which of those run without prompting. Headless has no one to
-#                  prompt, so anything omitted here would stall the request.
 READ_ONLY_TOOLS = ["Read", "Glob", "Grep", "mcp__concierge__git_log"]
 
 MAX_TURNS = 25
 
-# conversation_id (from the browser) -> SDK session_id, so follow-ups keep context.
 _sessions: dict[str, str] = {}
 
 
@@ -116,11 +111,34 @@ def _build_options(conversation_id: str) -> ClaudeAgentOptions:
     )
 
 
-async def generate_reply(message: str, conversation_id: str) -> str:
-    """Run one turn of the agent loop and return its final answer.
+NO_ANSWER = "I couldn't come up with an answer for that one. Try rephrasing?"
+AGENT_ERROR = "Something went wrong while I was reading the repository. Please try again."
 
-    Agent failures come back as a chat reply, not a 500 — a broken agent should look
-    like an apology in the transcript, not a dead fetch() in the browser.
+
+def _describe(block: ToolUseBlock) -> str:
+    """Turn a tool-use block into something a human wants to watch scroll by."""
+    args = block.input or {}
+    match block.name:
+        case "Read":
+            return f"reading {Path(str(args.get('file_path', '?'))).name}"
+        case "Glob":
+            return f"looking for {args.get('pattern', '?')}"
+        case "Grep":
+            return f"searching for “{args.get('pattern', '?')}”"
+        case "mcp__concierge__git_log":
+            scope = args.get("path") or "the repo"
+            return f"reading git history for {scope}"
+        case other:
+            return f"using {other}"
+
+
+async def stream_reply(message: str, conversation_id: str) -> AsyncIterator[dict]:
+    """Run one turn of the agent loop, yielding events as they happen.
+
+    Event shapes: {"type": "activity", "text": ...} while the agent works, then exactly
+    one terminal {"type": "reply", "text": ...}. Errors arrive as a reply, not an
+    exception — a broken agent should read as an apology in the transcript, not a dead
+    connection in the browser.
     """
     try:
         reply = ""
@@ -129,11 +147,28 @@ async def generate_reply(message: str, conversation_id: str) -> str:
                 session_id = msg.data.get("session_id")
                 if session_id:
                     _sessions[conversation_id] = session_id
+            elif isinstance(msg, AssistantMessage):
+                for block in msg.content:
+                    if isinstance(block, ToolUseBlock):
+                        logger.info("tool: %s", block.name)
+                        yield {"type": "activity", "text": _describe(block)}
             elif isinstance(msg, ResultMessage):
                 reply = msg.result or ""
 
-        return reply or "I couldn't come up with an answer for that one. Try rephrasing?"
+        yield {"type": "reply", "text": reply or NO_ANSWER}
 
     except Exception:
         logger.exception("agent failed for conversation %s", conversation_id)
-        return "Something went wrong while I was reading the repository. Please try again."
+        yield {"type": "reply", "text": AGENT_ERROR}
+
+
+async def generate_reply(message: str, conversation_id: str) -> str:
+    """Run one turn of the agent loop and return just its final answer.
+
+    The non-streaming path: same loop, activity discarded.
+    """
+    reply = AGENT_ERROR
+    async for event in stream_reply(message, conversation_id):
+        if event["type"] == "reply":
+            reply = event["text"]
+    return reply

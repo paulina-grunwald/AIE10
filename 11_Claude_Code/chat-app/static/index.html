@@ -58,8 +58,31 @@
     border: 1px solid var(--border);
     border-bottom-left-radius: 4px;
   }
-  .pending { color: var(--muted); font-style: italic; }
   .error { border-color: #d9534f; color: #d9534f; }
+
+  /* Live activity: what the agent is doing, right now. */
+  .activity {
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 4px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .activity::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .activity.done::before { animation: none; opacity: .35; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) {
+    .activity::before { animation: none; }
+  }
 
   form {
     display: flex;
@@ -122,7 +145,7 @@
     return el;
   }
 
-  form.addEventListener("submit", async (event) => {
+  form.addEventListener("submit", (event) => {
     event.preventDefault();
     const message = input.value.trim();
     if (!message) return;
@@ -131,26 +154,37 @@
     input.value = "";
     send.disabled = true;
 
-    const pending = addMessage("Thinking…", "agent", "pending");
+    // Activity lines accumulate while the agent works, then collapse to the answer.
+    const activity = [];
+    const url = "/api/chat/stream"
+      + `?message=${encodeURIComponent(message)}`
+      + `&conversation_id=${encodeURIComponent(conversationId)}`;
+    const source = new EventSource(url);
 
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, conversation_id: conversationId }),
-      });
-      if (!response.ok) throw new Error(`Server returned ${response.status}`);
-      const data = await response.json();
-      pending.classList.remove("pending");
-      pending.textContent = data.reply;
-    } catch (err) {
-      pending.classList.remove("pending");
-      pending.classList.add("error");
-      pending.textContent = `Could not reach the agent: ${err.message}`;
-    } finally {
+    const finish = () => {
+      source.close();
+      activity.forEach((el) => el.classList.add("done"));
       send.disabled = false;
       input.focus();
-    }
+    };
+
+    source.addEventListener("activity", (e) => {
+      activity.push(addMessage(JSON.parse(e.data).text, "activity"));
+    });
+
+    source.addEventListener("reply", (e) => {
+      addMessage(JSON.parse(e.data).text, "agent");
+      finish();
+    });
+
+    source.addEventListener("error", () => {
+      // EventSource fires this on network failure and on normal stream close;
+      // only complain if we never got an answer.
+      if (source.readyState !== EventSource.CLOSED) {
+        addMessage("Could not reach the agent. Is the server running?", "agent", "error");
+      }
+      finish();
+    });
   });
 
   input.focus();
