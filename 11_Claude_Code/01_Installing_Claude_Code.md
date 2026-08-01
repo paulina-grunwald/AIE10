@@ -131,8 +131,8 @@ Native installs also auto-update on startup. You can pin behavior in `~/.claude/
 
 You are done with this guide when:
 
-- [ ] `claude --version` prints a version
-- [ ] `claude doctor` reports a healthy install
-- [ ] You have authenticated and run one prompt against a real project
+- [x] `claude --version` prints a version
+- [x] `claude doctor` reports a healthy install
+- [x] You have authenticated and run one prompt against a real project
 
 **Next:** [`02_Using_Claude_Code.md`](./02_Using_Claude_Code.md) — learn to drive Claude Code, then use it to scaffold your chat app.

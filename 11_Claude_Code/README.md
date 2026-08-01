@@ -66,7 +66,9 @@ While scaffolding in Task 3 you used **plan mode** before letting Claude Code wr
 
 #### ✅ Answer
 
-_(insert your answer here)_
+An agent that can run shell commands has real reach into my machine. It can read files, move them, delete them, or run something that does damage, and it does all of that with my permissions. I can't fully trust the model to get every command right every time, so the permission system is there to keep a human in the loop. It lets me see what Claude wants to run and approve it before anything actually happens, which is the safety layer between a suggested command and an executed one.
+
+Plan mode matters most at the very start because that first stretch is where the most decisions get made and there is nothing in place yet to check them against. From an empty directory Claude is choosing the structure, the files, the dependencies, and the overall shape of the project all at once. Plan mode lets it lay out that whole approach first so I can read it and correct course before a single file is written. Catching a wrong assumption in the plan is cheap, but undoing a pile of files and commands after the fact is not.
 
 ### ❓ Question #2
 

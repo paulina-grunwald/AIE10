@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Codebase Concierge</title>
+<style>
+  :root {
+    --bg: #faf9f7;
+    --panel: #ffffff;
+    --border: #e5e2dc;
+    --text: #1f1e1c;
+    --muted: #78736b;
+    --accent: #c96442;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 { margin: 0; font-size: 15px; font-weight: 600; }
+  header p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+
+  #history {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .msg {
+    max-width: 680px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .user {
+    align-self: flex-end;
+    background: var(--accent);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .agent {
+    align-self: flex-start;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+  }
+  .error { border-color: #d9534f; color: #d9534f; }
+
+  /* Live activity: what the agent is doing, right now. */
+  .activity {
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 4px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .activity::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .activity.done::before { animation: none; opacity: .35; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) {
+    .activity::before { animation: none; }
+  }
+
+  form {
+    display: flex;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+  }
+  #input {
+    flex: 1;
+    padding: 10px 12px;
+    font: inherit;
+    color: inherit;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  #input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button {
+    padding: 10px 20px;
+    font: inherit;
+    font-weight: 500;
+    color: #fff;
+    background: var(--accent);
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Codebase Concierge</h1>
+    <p>Ask questions about the target repository.</p>
+  </header>
+
+  <div id="history" role="log" aria-live="polite"></div>
+
+  <form id="composer">
+    <input id="input" autocomplete="off" placeholder="What does this repo do?" aria-label="Message">
+    <button type="submit" id="send">Send</button>
+  </form>
+
+<script>
+  // Stable per-tab id so the server can map this chat to one agent session.
+  const conversationId = crypto.randomUUID();
+
+  const history = document.getElementById("history");
+  const form = document.getElementById("composer");
+  const input = document.getElementById("input");
+  const send = document.getElementById("send");
+
+  function addMessage(text, ...classes) {
+    const el = document.createElement("div");
+    el.className = ["msg", ...classes].join(" ");
+    el.textContent = text;
+    history.append(el);
+    history.scrollTop = history.scrollHeight;
+    return el;
+  }
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const message = input.value.trim();
+    if (!message) return;
+
+    addMessage(message, "user");
+    input.value = "";
+    send.disabled = true;
+
+    // Activity lines accumulate while the agent works, then collapse to the answer.
+    const activity = [];
+    const url = "/api/chat/stream"
+      + `?message=${encodeURIComponent(message)}`
+      + `&conversation_id=${encodeURIComponent(conversationId)}`;
+    const source = new EventSource(url);
+
+    const finish = () => {
+      source.close();
+      activity.forEach((el) => el.classList.add("done"));
+      send.disabled = false;
+      input.focus();
+    };
+
+    source.addEventListener("activity", (e) => {
+      activity.push(addMessage(JSON.parse(e.data).text, "activity"));
+    });
+
+    source.addEventListener("reply", (e) => {
+      addMessage(JSON.parse(e.data).text, "agent");
+      finish();
+    });
+
+    source.addEventListener("error", () => {
+      // EventSource fires this on network failure and on normal stream close;
+      // only complain if we never got an answer.
+      if (source.readyState !== EventSource.CLOSED) {
+        addMessage("Could not reach the agent. Is the server running?", "agent", "error");
+      }
+      finish();
+    });
+  });
+
+  input.focus();
+</script>
+</body>
+</html>
